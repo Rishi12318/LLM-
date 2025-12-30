@@ -1,0 +1,31 @@
+[tool.poetry]
+name = "multilingual-transcriber"
+version = "1.0.0"
+description = "Fully self-contained multilingual audio transcription with speaker diarization and translation"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+torch = "^2.1.0"
+torchaudio = "^2.1.0"
+transformers = "^4.36.0"
+openai-whisper = "^20231117"
+pyannote-audio = "3.1.1"
+pydub = "^0.25.1"
+ffmpeg-python = "^0.2.0"
+typer = "^0.9.0"
+rich = "^13.7.0"
+sentencepiece = "^0.1.99"
+sacremoses = "^0.0.53"
+numpy = "^1.24.0"
+pandas = "^2.0.0"
+huggingface-hub = "^0.19.0"
+
+[tool.poetry.scripts]
+transcribe = "main:app"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
