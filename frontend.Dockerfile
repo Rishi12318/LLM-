@@ -1,7 +1,7 @@
 # Multi-stage build for Next.js frontend
 
 # Stage 1: Dependencies
-FROM node:20-alpine as deps
+FROM node:20-alpine AS deps
 
 WORKDIR /app
 
@@ -11,20 +11,20 @@ RUN npm ci --only=production && \
     npm ci --only=development
 
 # Stage 2: Build
-FROM node:20-alpine as builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
 COPY frontend/package*.json ./
 COPY --from=deps /app/node_modules ./node_modules
-COPY frontend . 
+COPY frontend/ . 
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
 
 # Stage 3: Runtime
-FROM node:20-alpine as runtime
+FROM node:20-alpine AS runtime
 
 WORKDIR /app
 
