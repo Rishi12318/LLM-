@@ -51,6 +51,11 @@ results/
 !SETUP.md
 *.srt
 *.txt
+!requirements.txt
+!backend/requirements.txt
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/tsconfig.json
 !START_HERE.txt
 !EXAMPLES.py
 
