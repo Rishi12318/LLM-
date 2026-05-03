@@ -100,7 +100,7 @@ export default function TranscriptionResults({ results, jobId }: TranscriptionRe
                 {formatTime(segment.start)} - {formatTime(segment.end)}
               </span>
             </div>
-            <p className="text-gray-800 mb-2">{segment.original}</p>
+            <p className="text-gray-800 mb-2 font-medium">{segment.original}</p>
             {segment.english && (
               <div className="bg-blue-50 px-3 py-2 rounded-md border-l-2 border-blue-400">
                 <p className="text-sm text-gray-500 mb-1">🌐 English Translation:</p>

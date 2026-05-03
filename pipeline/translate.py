@@ -21,8 +21,8 @@ def batch_translate(
         segments: List of aligned segments with original text
             [{"speaker": "Speaker 1", "start": 0.0, "end": 2.5, 
               "original": "Bonjour", "lang": "fr"}]
-        source_lang: Source language code (e.g., 'fr', 'hi', 'es')
-        target_lang: Target language code (default: 'en')
+        source_lang: Source language code (e.g., 'fr', 'es', 'de')
+        target_lang: Target language code (default: 'en' for English)
         batch_size: Number of segments to translate at once
         
     Returns:
@@ -44,7 +44,7 @@ def batch_translate(
         from models.config import get_translation_model, get_language_name
         
         # Get appropriate translation model
-        model_id = get_translation_model(source_lang)
+        model_id = get_translation_model(source_lang, target_lang)
         
         if model_id is None:
             console.print("✓ No translation needed", style="green")
@@ -143,7 +143,7 @@ def translate_text(
     Args:
         text: Text to translate
         source_lang: Source language code
-        target_lang: Target language code
+        target_lang: Target language code (default: 'en' for English)
         
     Returns:
         Translated text

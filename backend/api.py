@@ -2,33 +2,31 @@
 FastAPI Backend for Multilingual Transcription
 """
 
-import os
-import sys
-import shutil
-from pathlib import Path
-from typing import Optional
-from datetime import datetime
 import json
+import logging
+import os
+import shutil
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
-from pydantic import BaseModel
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from pipeline import (
-    load_audio,
-    whisper_transcribe,
-    pyannote_diarize,
-    align_segments,
-    batch_translate,
-)
-from pipeline.format_output import save_all_formats
+from backend.rag import EvaluationCase, RAGService, SAMPLE_EVALUATION_CASES, get_default_generator
 from models import ModelManager
+from pipeline import align_segments, batch_translate, load_audio, pyannote_diarize, whisper_transcribe
+from pipeline.format_output import save_all_formats
+from utils.helpers import setup_logging
 
-app = FastAPI(title="Multilingual Transcriber API", version="1.0.0")
+app = FastAPI(title="Multilingual Transcriber API", version="2.0.0")
+logger = setup_logging(os.getenv("LOG_LEVEL", "INFO"))
 
 # CORS middleware
 app.add_middleware(
@@ -42,14 +40,26 @@ app.add_middleware(
 # Directories
 UPLOAD_DIR = Path(__file__).parent / "uploads"
 RESULTS_DIR = Path(__file__).parent / "results"
+STORAGE_DIR = Path(__file__).parent / "storage"
 UPLOAD_DIR.mkdir(exist_ok=True)
 RESULTS_DIR.mkdir(exist_ok=True)
+STORAGE_DIR.mkdir(exist_ok=True)
 
 # Model manager (singleton)
 model_manager = ModelManager()
+rag_service = RAGService(STORAGE_DIR)
+
+# Initialize LLM generator (Ollama if available, else context-only fallback)
+try:
+    rag_generator = get_default_generator(prefer_ollama=True)
+    logger.info(f"RAG generator initialized: {rag_generator.__class__.__name__}")
+except Exception as e:
+    logger.warning(f"Error initializing RAG generator, using fallback: {e}")
+    from backend.rag import SimpleContextGenerator
+    rag_generator = SimpleContextGenerator()
 
 # In-memory job storage (use Redis in production)
-jobs = {}
+jobs: Dict[str, Dict[str, Any]] = {}
 
 
 class TranscriptionRequest(BaseModel):
@@ -65,6 +75,23 @@ class JobStatus(BaseModel):
     progress: int
     message: str
     result: Optional[dict] = None
+
+
+class RagIngestRequest(BaseModel):
+    document_id: Optional[str] = None
+    source_name: str
+    text: str = Field(..., min_length=1)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class RagQueryRequest(BaseModel):
+    question: str = Field(..., min_length=1)
+    top_k: int = Field(default=5, ge=1, le=20)
+    use_llm: bool = Field(default=True, description="Use LLM generator if available, else context-only")
+
+
+class RagEvaluationRequest(BaseModel):
+    cases: Optional[list[dict[str, Any]]] = None
 
 
 @app.get("/")
@@ -84,7 +111,8 @@ async def health():
     return {
         "status": "healthy",
         "device": device,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "rag_index": rag_service.vector_store.stats(),
     }
 
 
@@ -139,6 +167,53 @@ async def transcribe_audio(
     }
 
 
+@app.post("/rag/ingest")
+async def ingest_rag_document(request: RagIngestRequest):
+    """Ingest a document into the retrieval index."""
+    document_id = request.document_id or request.source_name.replace(" ", "-").lower()
+    record = rag_service.ingest_text(
+        document_id=document_id,
+        source_name=request.source_name,
+        text=request.text,
+        metadata=request.metadata,
+    )
+    return {"status": "ok", "document": record, "index": rag_service.vector_store.stats()}
+
+
+@app.post("/rag/query")
+async def query_rag(request: RagQueryRequest):
+    """Query the retrieval index and return a grounded prompt + answer draft.
+    
+    Args:
+        request.question: Query text
+        request.top_k: Number of context chunks to retrieve
+        request.use_llm: If true, use LLM generator; if false, return context only
+        
+    Returns:
+        answer: LLM-generated (or context summary) grounded answer
+        messages: Structured prompt messages sent to LLM
+        retrieval: Context chunks with metadata
+        validation: Groundedness checks (citations, hallucination risk)
+    """
+    generator = rag_generator if request.use_llm else None
+    try:
+        return rag_service.query(request.question, top_k=request.top_k, generator=generator)
+    except RuntimeError as e:
+        logger.error(f"RAG query failed: {e}")
+        # Fallback: return context-only answer
+        return rag_service.query(request.question, top_k=request.top_k, generator=None)
+
+
+@app.post("/rag/evaluate")
+async def evaluate_rag(request: RagEvaluationRequest):
+    """Run the sample or custom evaluation suite."""
+    if request.cases:
+        cases = [EvaluationCase(**case) for case in request.cases]
+    else:
+        cases = SAMPLE_EVALUATION_CASES
+    return rag_service.evaluate(cases)
+
+
 async def process_transcription(
     job_id: str,
     file_path: Path,
@@ -179,9 +254,9 @@ async def process_transcription(
         
         # Translate
         jobs[job_id]["progress"] = 85
-        jobs[job_id]["message"] = "Translating..."
+        jobs[job_id]["message"] = "Translating to English..."
         
-        translated_segments = batch_translate(aligned_segments, lang_code)
+        translated_segments = batch_translate(aligned_segments, lang_code, target_lang="en")
         
         # Save results
         jobs[job_id]["progress"] = 95
@@ -202,7 +277,21 @@ async def process_transcription(
             base_name="result",
             metadata=metadata
         )
-        
+
+        # Index the transcript so the retrieval layer can ground future questions.
+        try:
+            rag_service.ingest_transcription(
+                job_id,
+                translated_segments,
+                metadata={
+                    **metadata,
+                    "output_dir": str(output_dir),
+                    "saved_files": saved_files,
+                },
+            )
+        except Exception:
+            logger.exception("RAG indexing failed for job %s", job_id)
+
         # Prepare result
         duration = max(seg["end"] for seg in translated_segments) if translated_segments else 0
         num_speakers = len(set(seg["speaker"] for seg in translated_segments))
@@ -225,8 +314,10 @@ async def process_transcription(
         
         # Cleanup uploaded file
         file_path.unlink(missing_ok=True)
+        logger.info("Completed transcription job %s", job_id)
         
     except Exception as e:
+        logger.exception("Transcription job %s failed", job_id)
         jobs[job_id]["status"] = "failed"
         jobs[job_id]["progress"] = 0
         jobs[job_id]["message"] = f"Error: {str(e)}"

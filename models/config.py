@@ -58,17 +58,18 @@ MODEL_CONFIG: Dict[str, str] = {
 }
 
 
-def get_translation_model(lang_code: str) -> str:
+def get_translation_model(lang_code: str, target_lang: str = "en") -> str:
     """
     Get the appropriate translation model for a given language code.
     
     Args:
         lang_code: ISO 639-1 language code (e.g., 'hi', 'fr', 'es')
+        target_lang: Target language (default: 'en')
         
     Returns:
         HuggingFace model ID for translation
     """
-    # If English, no translation needed
+    # If already English, no translation needed
     if lang_code.lower() in ["en", "eng"]:
         return None
     

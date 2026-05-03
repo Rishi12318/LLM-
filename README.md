@@ -876,6 +876,153 @@ Built with amazing open-source projects:
 
 <div align="center">
 
+## 🧠 Production Upgrade
+
+This codebase now includes a retrieval-augmented backend that can ingest documents or transcripts, chunk them for semantic search, and return grounded answers with citations.
+
+### What Changed
+- Added a persistent vector store with FAISS support when available and a TF-IDF fallback for local development.
+- Added structured prompt builders, answer validation, and hallucination-risk checks.
+- Added an evaluation harness with relevance, correctness, consistency, and groundedness metrics.
+- Added FastAPI routes for RAG ingestion, querying, and evaluation.
+- **NEW**: Added Ollama integration for LLM-based answer generation with automatic fallback to context-only if Ollama is unavailable.
+
+### New Backend Layout
+```text
+backend/
+├── rag/
+│   ├── chunking.py
+│   ├── embeddings.py
+│   ├── evaluation.py
+│   ├── generator.py          ← NEW: Ollama + fallback generators
+│   ├── prompts.py
+│   ├── service.py
+│   ├── validation.py
+│   └── vector_store.py
+└── storage/
+    └── vector_store/
+```
+
+### LLM Generation with Ollama
+
+The RAG system now supports local LLM inference via [Ollama](https://ollama.ai) for grounded answer generation:
+
+#### Setup Ollama (Optional but Recommended)
+
+1. **Install Ollama**:
+   - macOS: `brew install ollama`
+   - Linux: `curl -fsSL https://ollama.ai/install.sh | sh`
+   - Windows: Download from https://ollama.ai
+
+2. **Pull a Model**:
+   ```bash
+   ollama pull mistral      # Recommended: 7B, fast, good quality
+   # OR
+   ollama pull neural-chat  # 7B, conversational optimized
+   # OR
+   ollama pull orca-mini    # 3B, lightweight
+   ```
+
+3. **Start Ollama Server**:
+   ```bash
+   ollama serve
+   # Runs on http://localhost:11434 by default
+   ```
+
+#### Query the RAG System with LLM
+
+**With LLM generation (default)**:
+```bash
+curl -X POST http://localhost:8000/rag/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "What is this document about?",
+    "top_k": 5,
+    "use_llm": true
+  }'
+```
+
+**Without LLM (context-only fallback)**:
+```bash
+curl -X POST http://localhost:8000/rag/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "What is this document about?",
+    "top_k": 5,
+    "use_llm": false
+  }'
+```
+
+#### Response Structure
+```json
+{
+  "question": "What is this document about?",
+  "answer": "The LLM-generated grounded answer with citations [source:chunk_id]...",
+  "prompt": "Full prompt sent to the LLM",
+  "messages": [
+    {"role": "system", "content": "Answer only from provided context..."},
+    {"role": "developer", "content": "Use concise style..."},
+    {"role": "user", "content": "...full context and question..."}
+  ],
+  "retrieval": [
+    {
+      "chunk_id": "doc1:chunk_0",
+      "document_id": "doc1",
+      "source": "example.txt",
+      "score": 0.89,
+      "text": "Relevant text from document..."
+    }
+  ],
+  "validation": {
+    "is_grounded": true,
+    "groundedness_score": 0.95,
+    "citations": ["chunk_0", "chunk_2"],
+    "unsupported_ratio": 0.05,
+    "warnings": []
+  }
+}
+```
+
+#### Automatic Fallback
+
+If Ollama is not available:
+- The system automatically detects this during startup
+- Falls back to `SimpleContextGenerator` (returns formatted context)
+- All queries still work, but `answer` field contains context summary instead of LLM output
+- No configuration needed—fully automatic
+
+#### RAG Ingestion Pipeline
+
+Auto-index transcripts for Q&A:
+```bash
+# After transcription, transcript is automatically indexed
+curl -X POST http://localhost:8000/rag/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_name": "Meeting Notes",
+    "text": "Meeting discussion...",
+    "document_id": "meeting-2025-01-01",
+    "metadata": {"date": "2025-01-01", "type": "meeting"}
+  }'
+```
+
+#### Evaluation & Quality Metrics
+
+Run the evaluation suite:
+```bash
+curl -X POST http://localhost:8000/rag/evaluate
+```
+
+Returns metrics:
+- **Token F1**: Overlap between generated answer and ground truth
+- **Jaccard Similarity**: Set-based overlap
+- **Relevance**: Is context relevant to question?
+- **Correctness**: Is answer factually accurate?
+- **Consistency**: Are multiple answers consistent?
+- **Groundedness**: Does answer stay within context?
+
+---
+
 **Made with ❤️ for the open-source community**
 
 If this project helped you, consider giving it a ⭐️ on GitHub!
