@@ -29,16 +29,19 @@ FROM node:20-alpine as runtime
 WORKDIR /app
 
 ENV NODE_ENV=production \
-    NEXT_TELEMETRY_DISABLED=1
+    NEXT_TELEMETRY_DISABLED=1 \
+    NEXT_PUBLIC_API_URL=http://localhost:8000
 
 COPY frontend/package*.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 
+RUN apk add --no-cache curl
+
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD node -e "require('http').get('http://localhost:3000', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
+    CMD curl -f http://localhost:3000 || exit 1
 
 CMD ["npm", "start"]
