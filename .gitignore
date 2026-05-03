@@ -39,8 +39,19 @@ results/
 *.json
 *.md
 !README.md
+!RENDER_DEPLOYMENT.md
+!RENDER_CHECKLIST.md
+!PROJECT_SUMMARY.md
+!QUICK_START.md
+!OLLAMA_SETUP.md
+!OLLAMA_INTEGRATION.md
+!OLLAMA_STATUS.md
+!USAGE.md
+!SETUP.md
 *.srt
 *.txt
+!START_HERE.txt
+!EXAMPLES.py
 
 # Audio files (except sample)
 *.wav
