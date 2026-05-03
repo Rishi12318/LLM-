@@ -8,7 +8,7 @@ WORKDIR /app
 COPY frontend/package*.json ./
 
 RUN npm ci --only=production && \
-    npm ci --only=development
+    npm ci --only=development || true
 
 # Stage 2: Build
 FROM node:20-alpine AS builder

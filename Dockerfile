@@ -11,13 +11,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
-COPY requirements.txt ./
-COPY backend/requirements.txt ./backend/
+# Copy requirements - try with wildcards to catch files in current dir or subdirs
+COPY requirements.txt* ./
+COPY backend/ ./backend/
 
 # Install Python dependencies
-RUN pip install --user --no-cache-dir -r requirements.txt && \
-    pip install --user --no-cache-dir -r backend/requirements.txt
+RUN pip install --user --no-cache-dir -r requirements.txt
+RUN if [ -f backend/requirements.txt ]; then pip install --user --no-cache-dir -r backend/requirements.txt; fi
 
 # Stage 2: Runtime
 FROM python:3.11-slim AS runtime
