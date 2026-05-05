@@ -11,9 +11,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 # Add parent directory to path for imports
@@ -27,6 +28,7 @@ from utils.helpers import setup_logging
 
 app = FastAPI(title="Multilingual Transcriber API", version="2.0.0")
 logger = setup_logging(os.getenv("LOG_LEVEL", "INFO"))
+api_router = APIRouter(prefix="/api")
 
 # Configure CORS origins for local and deployed frontends
 default_origins = ["http://localhost:3000", "http://localhost:3001"]
@@ -47,6 +49,7 @@ app.add_middleware(
 UPLOAD_DIR = Path(__file__).parent / "uploads"
 RESULTS_DIR = Path(__file__).parent / "results"
 STORAGE_DIR = Path(__file__).parent / "storage"
+FRONTEND_DIST_DIR = Path(os.getenv("FRONTEND_DIST_DIR", str(Path(__file__).parent.parent / "frontend" / "out")))
 UPLOAD_DIR.mkdir(exist_ok=True)
 RESULTS_DIR.mkdir(exist_ok=True)
 STORAGE_DIR.mkdir(exist_ok=True)
@@ -100,17 +103,7 @@ class RagEvaluationRequest(BaseModel):
     cases: Optional[list[dict[str, Any]]] = None
 
 
-@app.get("/")
-async def root():
-    """API health check"""
-    return {
-        "status": "online",
-        "service": "Multilingual Transcriber API",
-        "version": "1.0.0"
-    }
-
-
-@app.get("/health")
+@api_router.get("/health")
 async def health():
     """Health check endpoint"""
     device = model_manager.get_device()
@@ -122,7 +115,7 @@ async def health():
     }
 
 
-@app.post("/transcribe")
+@api_router.post("/transcribe")
 async def transcribe_audio(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
@@ -173,7 +166,7 @@ async def transcribe_audio(
     }
 
 
-@app.post("/rag/ingest")
+@api_router.post("/rag/ingest")
 async def ingest_rag_document(request: RagIngestRequest):
     """Ingest a document into the retrieval index."""
     document_id = request.document_id or request.source_name.replace(" ", "-").lower()
@@ -186,7 +179,7 @@ async def ingest_rag_document(request: RagIngestRequest):
     return {"status": "ok", "document": record, "index": rag_service.vector_store.stats()}
 
 
-@app.post("/rag/query")
+@api_router.post("/rag/query")
 async def query_rag(request: RagQueryRequest):
     """Query the retrieval index and return a grounded prompt + answer draft.
     
@@ -210,7 +203,7 @@ async def query_rag(request: RagQueryRequest):
         return rag_service.query(request.question, top_k=request.top_k, generator=None)
 
 
-@app.post("/rag/evaluate")
+@api_router.post("/rag/evaluate")
 async def evaluate_rag(request: RagEvaluationRequest):
     """Run the sample or custom evaluation suite."""
     if request.cases:
@@ -330,7 +323,7 @@ async def process_transcription(
         jobs[job_id]["result"] = None
 
 
-@app.get("/status/{job_id}")
+@api_router.get("/status/{job_id}")
 async def get_job_status(job_id: str):
     """Get transcription job status"""
     if job_id not in jobs:
@@ -339,7 +332,7 @@ async def get_job_status(job_id: str):
     return jobs[job_id]
 
 
-@app.get("/results/{job_id}/{filename}")
+@api_router.get("/results/{job_id}/{filename}")
 async def get_result_file(job_id: str, filename: str):
     """Download result file"""
     file_path = RESULTS_DIR / job_id / filename
@@ -350,7 +343,7 @@ async def get_result_file(job_id: str, filename: str):
     return FileResponse(file_path)
 
 
-@app.get("/jobs")
+@api_router.get("/jobs")
 async def list_jobs():
     """List all jobs"""
     return {
@@ -366,7 +359,7 @@ async def list_jobs():
     }
 
 
-@app.delete("/job/{job_id}")
+@api_router.delete("/job/{job_id}")
 async def delete_job(job_id: str):
     """Delete a job and its results"""
     if job_id not in jobs:
@@ -381,6 +374,21 @@ async def delete_job(job_id: str):
     del jobs[job_id]
     
     return {"message": "Job deleted successfully"}
+
+
+app.include_router(api_router)
+
+if FRONTEND_DIST_DIR.exists():
+    app.mount("/", StaticFiles(directory=FRONTEND_DIST_DIR, html=True), name="frontend")
+else:
+    @app.get("/")
+    async def root():
+        return {
+            "status": "online",
+            "service": "Multilingual Transcriber API",
+            "version": "1.0.0",
+            "frontend": "not-built"
+        }
 
 
 if __name__ == "__main__":

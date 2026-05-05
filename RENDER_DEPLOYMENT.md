@@ -1,6 +1,6 @@
 # 🚀 Deploy to Render - Complete Guide
 
-This guide walks you through deploying the Multilingual Transcriber with Ollama integration to Render.
+This guide walks you through deploying the Multilingual Transcriber as a single Render Web Service that serves both the UI and the API.
 
 ## 📋 Prerequisites
 
@@ -10,8 +10,7 @@ This guide walks you through deploying the Multilingual Transcriber with Ollama 
 
 ## 🎯 What We're Deploying
 
-- **Backend**: FastAPI application on Render Web Service
-- **Frontend**: Next.js application on Render Web Service  
+- **Backend + Frontend**: FastAPI application serving the exported Next.js UI from one Render Web Service
 - **Database**: Optional PostgreSQL (for production features)
 - **Ollama**: Optional (can run locally or on separate GPU instance)
 
@@ -23,10 +22,10 @@ GitHub Repository
    (Push code)
        ↓
 Render (connected to GitHub)
-       ↓
-   ├─ Backend (Port 8000)
-   ├─ Frontend (Port 3000)
-   └─ Ollama (Optional, Port 11434)
+     ↓
+   One web service (UI + API)
+     ↓
+   Port 8000
 ```
 
 ## 📝 Step-by-Step Deployment
@@ -42,59 +41,19 @@ Render (connected to GitHub)
 3. Connect your GitHub repository
 4. Choose branch: `master`
 
-### 3️⃣ **Deploy Backend Service**
+### 3️⃣ **Deploy the Combined Web Service**
 
-**Create Web Service for Backend:**
 1. Go to Render Dashboard → New → Web Service
-2. Configure:
-   - **Name**: `multilingual-transcriber-backend`
-   - **Runtime**: Python 3.11
-   - **Build Command**:
-     ```bash
-     pip install -r requirements.txt && pip install -r backend/requirements.txt
-     ```
-   - **Start Command**:
-     ```bash
-     python -m uvicorn backend.api:app --host 0.0.0.0 --port $PORT
-     ```
-   - **Plan**: Free or Paid (Standard for production)
-
-3. **Environment Variables**:
-   - `PYTHON_VERSION`: 3.11
-   - `LOG_LEVEL`: INFO
-   - `OLLAMA_HOST`: http://localhost:11434 (or Ollama service URL if separate)
-
+2. Connect your GitHub repository
+3. Configure:
+  - **Name**: `multilingual-transcriber`
+  - **Runtime**: Docker
+  - **Dockerfile Path**: `./Dockerfile`
+  - **Plan**: Free or Paid (Standard for production)
 4. Click "Deploy"
 
-**Get Backend URL:**
-- After deployment: `https://multilingual-transcriber-backend.onrender.com`
-
-### 4️⃣ **Deploy Frontend Service**
-
-**Create Web Service for Frontend:**
-1. Render Dashboard → New → Web Service
-2. Configure:
-   - **Name**: `multilingual-transcriber-frontend`
-   - **Runtime**: Node 20
-   - **Build Command**:
-     ```bash
-     cd frontend && npm install && npm run build
-     ```
-   - **Start Command**:
-     ```bash
-     cd frontend && npm start
-     ```
-   - **Plan**: Free tier OK for frontend
-
-3. **Environment Variables**:
-   - `NEXT_PUBLIC_API_URL`: `https://multilingual-transcriber-backend.onrender.com`
-   - `NODE_ENV`: production
-   - `NODE_VERSION`: 20
-
-4. Click "Deploy"
-
-**Get Frontend URL:**
-- After deployment: `https://multilingual-transcriber-frontend.onrender.com`
+**Get App URL:**
+- After deployment: `https://multilingual-transcriber.onrender.com`
 
 ### 5️⃣ **Optional: Deploy Ollama Service**
 

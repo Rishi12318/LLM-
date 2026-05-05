@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Upload, FileAudio, X, Loader2 } from 'lucide-react';
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '');
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api').replace(/\/$/, '');
 
 interface AudioUploaderProps {
   onUploadComplete: (jobId: string) => void;

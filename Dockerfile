@@ -1,53 +1,57 @@
-# Multi-stage build for optimized backend deployment
+# Multi-stage build for a single-service deployment that serves the frontend and API together
 
-# Stage 1: Build dependencies
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+
+COPY frontend/package*.json ./
+RUN npm ci
+
+COPY frontend/ ./
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    NEXT_PUBLIC_API_URL=/api
+RUN npm run build
+
 FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements - try with wildcards to catch files in current dir or subdirs
 COPY requirements.txt* ./
 COPY backend/ ./backend/
+COPY models/ ./models/
+COPY pipeline/ ./pipeline/
+COPY utils/ ./utils/
 
-# Install Python dependencies
 RUN pip install --user --no-cache-dir -r requirements.txt
 RUN if [ -f backend/requirements.txt ]; then pip install --user --no-cache-dir -r backend/requirements.txt; fi
 
-# Stage 2: Runtime
 FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
-# Install runtime dependencies only
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Python dependencies from builder
 COPY --from=builder /root/.local /root/.local
-
-# Copy application code
 COPY . .
+COPY --from=frontend-builder /app/frontend/out ./frontend/out
 
-# Set PATH
 ENV PATH=/root/.local/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    LOG_LEVEL=INFO
+    LOG_LEVEL=INFO \
+    FRONTEND_DIST_DIR=/app/frontend/out
 
-# Expose port
 EXPOSE 8000
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:8000/api/health || exit 1
 
-# Start FastAPI backend
 CMD ["python", "-m", "uvicorn", "backend.api:app", "--host", "0.0.0.0", "--port", "8000"]

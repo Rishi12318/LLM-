@@ -36,33 +36,17 @@ Your Multilingual Transcriber with RAG and Ollama integration is now ready for p
 3. Authorize Render to access your repositories
 ```
 
-### Step 2: Deploy Backend (10 min)
+### Step 2: Deploy the Combined App (10 min)
 ```
 1. Render Dashboard → New → Web Service
 2. Connect your GitHub repository
 3. Configure:
-   - Name: multilingual-transcriber-backend
-   - Runtime: Python 3.11
-   - Build Command: pip install -r requirements.txt && pip install -r backend/requirements.txt
-   - Start Command: python -m uvicorn backend.api:app --host 0.0.0.0 --port $PORT
+   - Name: multilingual-transcriber
+   - Runtime: Docker
+   - Dockerfile Path: ./Dockerfile
 4. Click "Deploy"
 5. Wait for success (~3-5 minutes)
-6. Note the URL: https://multilingual-transcriber-backend.onrender.com
-```
-
-### Step 3: Deploy Frontend (10 min)
-```
-1. Render Dashboard → New → Web Service
-2. Connect same GitHub repository
-3. Configure:
-   - Name: multilingual-transcriber-frontend
-   - Runtime: Node 20
-   - Build Command: cd frontend && npm install && npm run build
-   - Start Command: cd frontend && npm start
-   - Environment: NEXT_PUBLIC_API_URL=https://multilingual-transcriber-backend.onrender.com
-4. Click "Deploy"
-5. Wait for success (~5-10 minutes)
-6. Access at: https://multilingual-transcriber-frontend.onrender.com
+6. Access at: https://multilingual-transcriber.onrender.com
 ```
 
 ---
