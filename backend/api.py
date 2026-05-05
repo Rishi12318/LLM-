@@ -28,10 +28,16 @@ from utils.helpers import setup_logging
 app = FastAPI(title="Multilingual Transcriber API", version="2.0.0")
 logger = setup_logging(os.getenv("LOG_LEVEL", "INFO"))
 
+# Configure CORS origins for local and deployed frontends
+default_origins = ["http://localhost:3000", "http://localhost:3001"]
+env_origins = [origin.strip() for origin in os.getenv("CORS_ORIGINS", "").split(",") if origin.strip()]
+frontend_url = os.getenv("FRONTEND_URL", "").strip()
+allow_origins = sorted(set(default_origins + env_origins + ([frontend_url] if frontend_url else [])))
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
