@@ -54,3 +54,21 @@ def build_rag_messages(question: str, hits: Iterable[RetrievalHit]) -> List[dict
             ),
         },
     ]
+
+
+def build_summarization_messages(text: str) -> List[dict]:
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You are an expert at summarizing audio transcriptions. "
+                "Provide a concise, high-level summary of the main topics discussed, "
+                "key decisions made, and any action items identified. "
+                "Use professional tone and bullet points."
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"Please summarize the following transcription:\n\n{text}",
+        },
+    ]

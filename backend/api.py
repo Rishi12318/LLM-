@@ -97,6 +97,7 @@ class RagQueryRequest(BaseModel):
     question: str = Field(..., min_length=1)
     top_k: int = Field(default=5, ge=1, le=20)
     use_llm: bool = Field(default=True, description="Use LLM generator if available, else context-only")
+    history: Optional[List[Dict[str, str]]] = Field(default=None, description="Conversation history (list of role/content dicts)")
 
 
 class RagEvaluationRequest(BaseModel):
@@ -196,7 +197,12 @@ async def query_rag(request: RagQueryRequest):
     """
     generator = rag_generator if request.use_llm else None
     try:
-        return rag_service.query(request.question, top_k=request.top_k, generator=generator)
+        return rag_service.query(
+            request.question, 
+            top_k=request.top_k, 
+            generator=generator,
+            history=request.history
+        )
     except RuntimeError as e:
         logger.error(f"RAG query failed: {e}")
         # Fallback: return context-only answer
@@ -211,6 +217,42 @@ async def evaluate_rag(request: RagEvaluationRequest):
     else:
         cases = SAMPLE_EVALUATION_CASES
     return rag_service.evaluate(cases)
+
+
+@api_router.get("/summarize/{job_id}")
+async def summarize_transcript(job_id: str):
+    """Generate a summary for a specific transcription job."""
+    if job_id not in jobs:
+        # Check if job exists in results directory
+        job_dir = RESULTS_DIR / job_id
+        if not job_dir.exists():
+            raise HTTPException(404, "Job not found")
+        
+        # Load result.json to get segments
+        result_file = job_dir / "result.json"
+        if not result_file.exists():
+            raise HTTPException(404, "Result file not found")
+        
+        with open(result_file, "r", encoding="utf-8") as f:
+            result_data = json.load(f)
+            segments = result_data.get("segments", [])
+    else:
+        job = jobs[job_id]
+        if job["status"] != "completed":
+            raise HTTPException(400, f"Job is in status: {job['status']}")
+        segments = job["result"].get("segments", [])
+
+    if not segments:
+        raise HTTPException(400, "No transcription segments found to summarize.")
+
+    # Convert segments to text
+    from backend.rag.chunking import transcript_segments_to_text
+    text = transcript_segments_to_text(segments)
+    
+    # Generate summary
+    summary = rag_service.summarize(text, generator=rag_generator)
+    
+    return {"job_id": job_id, "summary": summary}
 
 
 async def process_transcription(

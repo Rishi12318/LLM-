@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 from .chunking import ChunkingConfig, build_document_chunks, load_text_from_file, transcript_segments_to_text
 from .evaluation import EvaluationCase, run_evaluation_suite
-from .prompts import build_rag_messages, build_rag_prompt
+from .prompts import build_rag_messages, build_rag_prompt, build_summarization_messages
 from .types import ChunkRecord, RetrievalHit
 from .validation import validate_answer
 from .vector_store import VectorStore
@@ -116,10 +116,19 @@ class RAGService:
         question: str,
         top_k: int = 5,
         generator: Callable[[List[dict], Sequence[RetrievalHit]], str] | None = None,
+        history: List[dict] | None = None,
     ) -> Dict[str, Any]:
         hits = self.retrieve(question, top_k=top_k)
         prompt = build_rag_prompt(question, hits)
         messages = build_rag_messages(question, hits)
+        
+        # Inject conversation history if provided
+        if history:
+            # Keep system and developer prompts at the top, inject history before user question
+            system_msgs = messages[:-1]
+            user_msg = messages[-1:]
+            messages = system_msgs + history + user_msg
+
         answer = generator(messages, hits) if generator else self._grounded_answer(question, hits)
         validation = validate_answer(answer, hits)
 
@@ -142,6 +151,20 @@ class RAGService:
             "validation": validation,
             "store": self.vector_store.stats(),
         }
+
+    def summarize(
+        self,
+        text: str,
+        generator: Callable[[List[dict], Sequence[RetrievalHit]], str] | None = None,
+    ) -> str:
+        """Generate a high-level summary of the provided text."""
+        messages = build_summarization_messages(text)
+        if generator:
+            # Summarization doesn't need retrieval hits for grounding, but generator expects them
+            return generator(messages, [])
+        
+        # Fallback if no generator
+        return "Summary generation requires an active LLM generator (e.g., Ollama)."
 
     def evaluate(self, cases: Sequence[EvaluationCase] | None = None) -> Dict[str, Any]:
         return run_evaluation_suite(cases)
